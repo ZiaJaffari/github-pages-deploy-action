@@ -1,24 +1,41 @@
-name: Deploy Code to Release Branch 🚀
+
+name: GoldStore CI-CD
+
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: goldstore-deployment
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Push to Release Branch
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  build-test-publish:
+    runs-on: [self-hosted, Windows, X64, goldstore]
 
-      # Workflow dispatch event that pushes the current version to the release branch.
-      # From here the secondary production deployment workflow will trigger to build the dependencies.
-      - name: Deploy 🚀
-        uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
+    defaults:
+      run:
+        shell: cmd
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
         with:
-          branch: releases/v4
-          folder: .
-          clean: false
-          single-commit: true
+          persist-credentials: false
+
+      - name: Check .NET SDK
+        run: dotnet --info
+
+      - name: Restore dependencies
+        run: dotnet restore GoldStoreSolution.sln
+
+      - name: Build solution
+        run: dotnet build GoldStoreSolution.sln -c Release --no-restore
+
+      - name: Run tests
+        run: dotnet test GoldStoreSolution.sln -c Release --no-build
+
+      - name: Publish GoldStore
+        run: dotnet publish GoldStore.Web/GoldStore.Web.csproj -c Release --self-contained false -o "%RUNNER_TEMP%\GoldStore-Publish-%GITHUB_RUN_ID%-%GITHUB_RUN_ATTEMPT%"
